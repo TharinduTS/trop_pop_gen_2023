@@ -97,5 +97,63 @@ realSFS fst stats2 here.fst.idx -win 5000 -step 5000 >slidingwindow
 
 done
 ```
+# Admixture
+
+Made a sub folder inside previous folder with bam files and started Admixture there
+
+first created the text file bam file list
+
+bam.filelist
+```txt
+../F_Ghana_WZ_BJE4687_combined__sorted.bam_rg_rh.bam
+../F_IvoryCoast_xen228_combined__sorted.bam_rg_rh.bam
+../F_Nigeria_EUA0331_combined__sorted.bam_rg_rh.bam
+../F_Nigeria_EUA0333_combined__sorted.bam_rg_rh.bam
+../F_SierraLeone_AMNH17272_combined__sorted.bam_rg_rh.bam
+../F_SierraLeone_AMNH17274_combined__sorted.bam_rg_rh.bam
+../all_ROM19161_sorted.bam
+../XT10_WZ_no_adapt._sorted.bam_rg_rh.bam
+../XT11_WW_trim_no_adapt_scafconcat_sorted.bam_rg_rh.bam
+../M_Ghana_WY_BJE4362_combined__sorted.bam_rg_rh.bam
+../M_Ghana_ZY_BJE4360_combined__sorted.bam_rg_rh.bam
+../M_Nigeria_EUA0334_combined__sorted.bam_rg_rh.bam
+../M_Nigeria_EUA0335_combined__sorted.bam_rg_rh.bam
+../M_SierraLeone_AMNH17271_combined__sorted.bam_rg_rh.bam
+../M_SierraLeone_AMNH17273_combined__sorted.bam_rg_rh.bam
+../XT1_ZY_no_adapt._sorted.bam_rg_rh.bam
+../XT7_WY_no_adapt__sorted.bam_rg_rh.bam
+```
+
+then prepared the files for Admixture analysis with
+
+prep_admix.sh
+
+```bash
+#!/bin/sh
+#SBATCH --job-name=fst
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --time=48:00:00
+#SBATCH --mem=512gb
+#SBATCH --output=abba.%J.out
+#SBATCH --error=abba.%J.err
+#SBATCH --account=def-ben
+
+#SBATCH --mail-user=premacht@mcmaster.ca
+#SBATCH --mail-type=BEGIN
+#SBATCH --mail-type=END
+#SBATCH --mail-type=FAIL
+#SBATCH --mail-type=REQUEUE
+#SBATCH --mail-type=ALL
+
+# Load modules
+module load nixpkgs/16.09  gcc/7.3.0
+module load angsd
+module load gsl/2.5
+module load htslib
+
+angsd -GL 1 -out genolike -nThreads 10 -doGlf 2 -doMajorMinor 1 -SNP_pval 1e-6 -doMaf 1  -bam bam.filelist
+```
+
 
 
