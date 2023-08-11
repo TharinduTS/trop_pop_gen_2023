@@ -531,6 +531,47 @@ module load bwa
 module load samtools/1.10
 for i in ./../*.bam ; do samtools depth -a -r Chr7:1-20000000 $i > ./$i"_depth" ; done
 ```
+Then I calculated windowed depth with the following script
+
+```R
+library("rstudioapi") 
+setwd(dirname(getActiveDocumentContext()$path))
+
+library(reshape) # to rename columns
+library(data.table) # to make sliding window dataframe
+library(zoo) # to apply rolling function for sliding window
+library(ggplot2)
+
+file_list<-grep(list.files(path="./"), pattern='*bam_depth', value=TRUE)
+
+for (filex in file_list) {
+  
+
+#upload data to dataframe, rename headers, make locus continuous, create subsets
+depth <- read.table(filex, sep="\t", header=T)
+
+# give new column names
+names(depth)<-c('Chr','pos','depth')
+
+#install.packages("data.table")
+library(data.table)
+#install.packages("zoo")
+library(zoo)
+
+Xdepth<-subset(depth, select = c("Chr", "pos","depth"))
+
+#genome coverage as sliding window
+Xdepth.average<-setDT(Xdepth)[, .(
+  window.start = rollapply(pos, width=5000, by=5000, FUN=min, align="left", partial=TRUE),
+  window.end = rollapply(pos, width=5000, by=5000, FUN=max, align="left", partial=TRUE),
+  coverage = rollapply(depth, width=5000, by=5000, FUN=mean, align="left", partial=TRUE)
+), .(Chr)]
+
+write.table(Xdepth.average, file=paste(filex,".windowed",sep = ''), quote=FALSE, sep='\t', col.names = NA)
+
+}
+
+```
 
 # Nucleotide diversity
 
