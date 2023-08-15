@@ -572,6 +572,114 @@ write.table(Xdepth.average, file=paste(filex,".windowed",sep = ''), quote=FALSE,
 }
 
 ```
+Then plotted data with
+
+```R
+library("rstudioapi") 
+setwd(dirname(getActiveDocumentContext()$path))
+
+library(ggplot2)
+
+# Delete previous plot before starting if it is in the same folder*****************
+
+
+#remove scientific notation
+options(scipen=999)
+
+pop_name<-""
+
+file_list<-grep(list.files(path="./"), pattern='\\windowed$', value=TRUE)
+
+print(file_list)
+
+# combine files adding pop and sex from file name
+df <- do.call(rbind, lapply(file_list, function(x) cbind(read.table(x), file_name=x)))
+
+# give new column names
+names(df)<-c("Chr","Start","End","Depth","file_name")
+
+# Split name column into firstname and last name
+require(stringr)
+df[c('sex', 'pop','ind','info')] <- str_split_fixed(df$file_name, '_', 4)
+
+# Subset Rows by column value
+df<-df[df$Chr == 'Chr7',]
+
+# Subset Rows by column value
+df_females<-df[df$sex == 'F',]
+df_males<-df[df$sex == 'M',]
+
+#create an empty column for means/males
+df_males$ind_mean<-"NA"
+
+#add mean column males
+male_means<-tapply(df_males$Depth,df_males$ind, mean)
+male_mean_df<-as.data.frame(male_means)
+# DataFrame and put name of function rn
+male_mean_df <- tibble::rownames_to_column(male_mean_df, "ind")
+
+#conditionally fill the column comparing values
+for (i in 1:length(male_mean_df$ind)) {
+  for (j in 1:length(df_males$Depth)) {
+    if (male_mean_df$ind[i]==df_males$ind[j]) {
+      df_males$ind_mean[j]<-male_mean_df$male_means[i]
+    }
+    j=j+1
+  }
+}
+
+#add a column with std depth
+df_males$std_depth<-as.numeric(df_males$Depth)/as.numeric(df_males$ind_mean)
+
+#create an empty column for means/females
+df_females$ind_mean<-"NA"
+
+#add mean column females
+male_means<-tapply(df_females$Depth,df_females$ind, mean)
+male_mean_df<-as.data.frame(male_means)
+# DataFrame and put name of function rn
+male_mean_df <- tibble::rownames_to_column(male_mean_df, "ind")
+
+#conditionally fill the column comparing values
+for (i in 1:length(male_mean_df$ind)) {
+  for (j in 1:length(df_females$Depth)) {
+    if (male_mean_df$ind[i]==df_females$ind[j]) {
+      df_females$ind_mean[j]<-male_mean_df$male_means[i]
+    }
+    j=j+1
+  }
+}
+
+#add a column with std depth
+df_females$std_depth<-as.numeric(df_females$Depth)/as.numeric(df_females$ind_mean)
+
+#list populations
+
+pop_list<-unique(df$pop)
+
+print(pop_list)
+
+p<-ggplot(df_males,aes(x=Start/1000000,y=std_depth,color=ind))+
+  #geom_point(alpha=0.1)+
+  geom_smooth()+
+  scale_color_manual(values = c("BJE4360"="blue","BJE4362"='blue',"EUA0334"='blue',"EUA0335"='blue',"AMNH17271"='blue',"AMNH17273"='blue',"XT1"='blue',"XT7"='blue',"BJE4687"='red',"xen228"='red',"all"='red',"GermSeq"='red',"EUA0331"='red',"EUA0333"='red',"JBL052"='red',"AMNH17272"='red',"AMNH17274"='red',"XT10"='red',"XT11"='red' ))+
+  geom_smooth(data = df_females,aes(x=Start/1000000,y=std_depth,color=ind))+
+  #scale_color_manual(labels = c("Males", "Females"), values = c("blue", "red"))+
+  labs(title = pop_name)+
+  #ylim(-0.05, 0.25)+
+  xlim(1,20)+
+  theme_bw()+
+  xlab("Chrom_position - Chr 7 (mb)")+
+  ylab("Depth")+
+  theme_classic()+ 
+  theme(legend.position="none")
+
+#chgange order here
+p+facet_wrap(~factor(pop,levels=c("Liberia","SierraLeone","IvoryCoast","Ghana","tad","Nigeria","scaffs","mello")),ncol=1,labeller = as_labeller(c(Liberia='Liberia',SierraLeone='Sierra Leone',IvoryCoast='Ivory Coast',Ghana='Ghana',tad='Tadpoles',Nigeria='Nigeria',scaffs='Scaffold data',mello='Mellotropicalis data')))
+
+
+ggsave(paste("20M_",pop_name,"_depth_plot.pdf",sep = ""))
+```
 
 # Nucleotide diversity
 
@@ -599,17 +707,18 @@ bam.filelist
 ../XT1_ZY_no_adapt._sorted.bam_rg_rh.bam
 ../XT7_WY_no_adapt__sorted.bam_rg_rh.bam
 ```
-then prepared the bam files with
+then calculated tP(π) with
 ```bash
 #!/bin/sh
 #SBATCH --job-name=fst
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --time=72:00:00
-#SBATCH --mem=512gb
+#SBATCH --time=48:00:00
+#SBATCH --mem=64gb
 #SBATCH --output=abba.%J.out
 #SBATCH --error=abba.%J.err
 #SBATCH --account=def-ben
+#SBATCH --array=1-19
 
 #SBATCH --mail-user=premacht@mcmaster.ca
 #SBATCH --mail-type=BEGIN
@@ -624,7 +733,67 @@ module load angsd
 module load gsl/2.5
 module load htslib
 
-angsd -bam bam.filelist -doSaf 1 -anc ../reference_genome/XENTR_10.0_genome_scafconcat_goodnamez.fasta -GL 1 -P 24 -out out
+angsd -bam ind${SLURM_ARRAY_TASK_ID} -doSaf 1 -anc ../../reference_genome/XENTR_10.0_genome_scafconcat_goodnamez.fasta -GL 1 -P 24 -out out_${SLURM_ARRAY_TASK_ID}
+
+realSFS out_${SLURM_ARRAY_TASK_ID}.saf.idx -P 24 > out_${SLURM_ARRAY_TASK_ID}.sfs
+realSFS saf2theta out_${SLURM_ARRAY_TASK_ID}.saf.idx -sfs out_${SLURM_ARRAY_TASK_ID}.sfs -outname out_${SLURM_ARRAY_TASK_ID}
+thetaStat do_stat out_${SLURM_ARRAY_TASK_ID}.thetas.idx -win 5000 -step 5000  -outnames theta.thetasWindow_${SLURM_ARRAY_TASK_ID}.gz
+```
+After downloading the files, plotted them with R
+
+```R
+library("rstudioapi") 
+setwd(dirname(getActiveDocumentContext()$path))
+
+library(ggplot2)
+
+#remove scientific notation
+options(scipen=999)
+
+pop_name<-" "
+
+file_list<-grep(list.files(path="./"), pattern='*.R', invert=TRUE, value=TRUE)
+
+# combine files adding pop and sex from file name
+df <- do.call(rbind, lapply(file_list, function(x) cbind(read.table(x), file_name=x)))
+
+# Split name column into firstname and last name
+require(stringr)
+df[c('pop', 'sex')] <- str_split_fixed(df$file_name, '_', 2)
+
+# give new column names
+names(df)<-c("indexStart,indexStop,firstPos_withData,lastPos_withData,WinStart,WinStop","Chr","WinCenter","tW","tP","tF","tH","tL","Tajima","fuf","fud","fayh","zeng","nSites","filename","pop","sex")
+
+# Subset Rows by column value
+df<-df[df$Chr == 'Chr7',]
+
+# Subset Rows by column value
+df_females<-df[df$sex == 'females',]
+df_males<-df[df$sex == 'males',]
+
+#list populations
+
+pop_list<-unique(df_males$pop)
+
+
+  
+p<-ggplot(df_males,aes(x=WinCenter/1000000,y=tP,color="blue"))+
+        #geom_point(alpha=0.1)+
+        geom_smooth()+
+        geom_smooth(data = df_females,aes(x=WinCenter/1000000,y=tP,color="red"))+
+        scale_color_manual(labels = c("Males", "Females"), values = c("blue", "red"))+
+        labs(title = pop_name)+
+        #ylim(-0.05, 0.25)+
+        xlim(1,20)+
+        theme_bw()+
+        xlab("Chrom_position - Chr 7 (mb)")+
+        ylab(expression(pi))+
+        theme_classic()
+
+#chgange order here
+p+facet_wrap(~factor(pop,levels=c("all","notad","sierra","ghana","tad","niger")),ncol=1,labeller = as_labeller(c(all='All Individuals', notad='No tadpoles', sierra='Sierra Leone', ghana='Ghana', tad = 'Tadpoles',niger = 'Nigeria')))
+
+ggsave(paste("20M_",pop_name,"_no_point_plot.pdf",sep = ""))
 ```
 # PCA
 
@@ -654,7 +823,7 @@ module load vcftools
 for i in *.vcf; do  bgzip -c $äiå > $äiå.gz ; done
 for i in *.vcf.gz; do bcftools index -t $äiå ; done
 
-vcf-merge combined_Chr10.g.vcf.gz_Chr10_GenotypedSNPs.vcf.gz_filtered.vcf.gz_selected.vcf.gz combined_Chr1.g.vcf.gz_Chr1_GenotypedSNPs.vcf.gz_filtered.vcf.gz_selected.vcf.gz combined_Chr2.g.vcf.gz_Chr2_GenotypedSNPs.vcf.gz_filtered.vcf.gz_selected.vcf.gz combined_Chr3.g.vcf.gz_Chr3_GenotypedSNPs.vcf.gz_filtered.vcf.gz_selected.vcf.gz combined_Chr4.g.vcf.gz_Chr4_GenotypedSNPs.vcf.gz_filtered.vcf.gz_selected.vcf.gz combined_Chr5.g.vcf.gz_Chr5_GenotypedSNPs.vcf.gz_filtered.vcf.gz_selected.vcf.gz combined_Chr6.g.vcf.gz_Chr6_GenotypedSNPs.vcf.gz_filtered.vcf.gz_selected.vcf.gz combined_Chr7.g.vcf.gz_Chr7_GenotypedSNPs.vcf.gz_filtered.vcf.gz_selected.vcf.gz combined_Chr8.g.vcf.gz_Chr8_GenotypedSNPs.vcf.gz_filtered.vcf.gz_selected.vcf.gz combined_Chr9.g.vcf.gz_Chr9_GenotypedSNPs.vcf.gz_filtered.vcf.gz_selected.vcf.gz combined_Scafs.g.vcf.gz_Scafs_GenotypedSNPs.vcf.gz_filtered.vcf.gz_selected.vcf.gz ö bgzip -c > combined_data_2023_Aug.vcf.gz
+vcf-concat combined_Chr10.g.vcf.gz_Chr10_GenotypedSNPs.vcf.gz_filtered.vcf.gz_selected.vcf.gz combined_Chr1.g.vcf.gz_Chr1_GenotypedSNPs.vcf.gz_filtered.vcf.gz_selected.vcf.gz combined_Chr2.g.vcf.gz_Chr2_GenotypedSNPs.vcf.gz_filtered.vcf.gz_selected.vcf.gz combined_Chr3.g.vcf.gz_Chr3_GenotypedSNPs.vcf.gz_filtered.vcf.gz_selected.vcf.gz combined_Chr4.g.vcf.gz_Chr4_GenotypedSNPs.vcf.gz_filtered.vcf.gz_selected.vcf.gz combined_Chr5.g.vcf.gz_Chr5_GenotypedSNPs.vcf.gz_filtered.vcf.gz_selected.vcf.gz combined_Chr6.g.vcf.gz_Chr6_GenotypedSNPs.vcf.gz_filtered.vcf.gz_selected.vcf.gz combined_Chr7.g.vcf.gz_Chr7_GenotypedSNPs.vcf.gz_filtered.vcf.gz_selected.vcf.gz combined_Chr8.g.vcf.gz_Chr8_GenotypedSNPs.vcf.gz_filtered.vcf.gz_selected.vcf.gz combined_Chr9.g.vcf.gz_Chr9_GenotypedSNPs.vcf.gz_filtered.vcf.gz_selected.vcf.gz combined_Scafs.g.vcf.gz_Scafs_GenotypedSNPs.vcf.gz_filtered.vcf.gz_selected.vcf.gz ö bgzip -c > combined_data_2023_Aug.vcf.gz
 ```
 
 
