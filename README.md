@@ -739,7 +739,88 @@ realSFS out_${SLURM_ARRAY_TASK_ID}.saf.idx -P 24 > out_${SLURM_ARRAY_TASK_ID}.sf
 realSFS saf2theta out_${SLURM_ARRAY_TASK_ID}.saf.idx -sfs out_${SLURM_ARRAY_TASK_ID}.sfs -outname out_${SLURM_ARRAY_TASK_ID}
 thetaStat do_stat out_${SLURM_ARRAY_TASK_ID}.thetas.idx -win 5000 -step 5000  -outnames theta.thetasWindow_${SLURM_ARRAY_TASK_ID}.gz
 ```
-After downloading the files, plotted them with R
+After downloading the files, 
+
+calculated moving average by windows
+
+```R
+library("rstudioapi") 
+setwd(dirname(getActiveDocumentContext()$path))
+
+library(reshape) # to rename columns
+library(data.table) # to make sliding window dataframe
+library(zoo) # to apply rolling function for sliding window
+library(ggplot2)
+
+#change window size here ************
+win_size<-5000
+
+#change moving win size here ***********
+mov_win_size<-5000
+
+file_list<-grep(list.files(path="./Individual_NDs",full.names = TRUE), pattern='*', value=TRUE)
+
+print(file_list)
+
+# create a directory for moving avg files if it doesn't already exist
+
+if (!dir.exists("moving_avg")){
+  dir.create("moving_avg")
+}else{
+  print("dir exists")
+}
+
+for (filex in file_list) {
+  
+
+#upload data to dataframe, rename headers, make locus continuous, create subsets
+depth <- read.table(filex, sep="\t", header=T)
+
+# give new column names
+names(depth)<-c("indexStart_indexStop_firstPos_withData_lastPos_withData_WinStart,WinStop","Chr","WinCenter","tW","tP","tF","tH","tL","Tajima","fuf","fud","fayh","zeng","nSites")
+
+#*******dividing pi by no of sites to get proper pi
+
+depth$tP<-depth$tP/depth$nSites
+
+#**************************************************
+
+#install.packages("data.table")
+library(data.table)
+#install.packages("zoo")
+library(zoo)
+
+Xdepth<-subset(depth, select = c("Chr", "WinCenter","tP"))
+
+#genome coverage as sliding window
+#Xdepth.average<-setDT(Xdepth)[, .(
+#  window.start = rollapply(pos, width=win_size, by=win_size, FUN=min, align="left", partial=TRUE),
+#  window.end = rollapply(pos, width=win_size, by=win_size, FUN=max, align="left", partial=TRUE),
+#  coverage = rollapply(depth, width=win_size, by=win_size, FUN=mean, align="left", partial=TRUE)
+#), .(Chr)]
+
+
+# cal needed number of windows for moving average
+mov_avg_no<-length(Xdepth$WinCenter)-mov_win_size+1
+
+#subset needed dataset
+
+moving_avg_df<-Xdepth[c(1:mov_avg_no),c(1:3)]
+
+#add moving avg to dataframe
+moving_avg_df$moving_avg<-rollmean(Xdepth$tP, k = mov_win_size)
+
+#extract file name to save
+saving_name<-tail(strsplit(filex, "/")[[1]],n=1)
+
+#write.table(Xdepth.average, file=paste("./windowed_depth/",saving_name,".windowed",sep = ''), quote=FALSE, sep='\t', col.names = NA)
+
+write.table(moving_avg_df, file=paste("./moving_avg/",saving_name,"_movingavg",sep = ''), quote=FALSE, sep='\t', col.names = NA)
+
+}
+
+```
+Then plot
 
 ```R
 library("rstudioapi") 
@@ -747,53 +828,124 @@ setwd(dirname(getActiveDocumentContext()$path))
 
 library(ggplot2)
 
+# Delete previous plot before starting if it is in the same folder*****************
+
+
 #remove scientific notation
 options(scipen=999)
 
-pop_name<-" "
+pop_name<-""
 
-file_list<-grep(list.files(path="./"), pattern='*.R', invert=TRUE, value=TRUE)
+file_list<-grep(list.files(path="./moving_avg",full.names = TRUE), pattern='\\movingavg$', value=TRUE)
+
+print(file_list)
 
 # combine files adding pop and sex from file name
-df <- do.call(rbind, lapply(file_list, function(x) cbind(read.table(x), file_name=x)))
+df <- do.call(rbind, lapply(file_list, function(x) cbind(read.table(x), file_name=tail(strsplit(x, "/")[[1]],n=1))))
+
+# give new column names
+#names(df)<-c("Chr","Start","End","Depth","file_name")
 
 # Split name column into firstname and last name
 require(stringr)
-df[c('pop', 'sex')] <- str_split_fixed(df$file_name, '_', 2)
-
-# give new column names
-names(df)<-c("indexStart,indexStop,firstPos_withData,lastPos_withData,WinStart,WinStop","Chr","WinCenter","tW","tP","tF","tH","tL","Tajima","fuf","fud","fayh","zeng","nSites","filename","pop","sex")
+df[c( 'ind','sex','pop','info')] <- str_split_fixed(df$file_name, '_', 4)
 
 # Subset Rows by column value
 df<-df[df$Chr == 'Chr7',]
 
 # Subset Rows by column value
-df_females<-df[df$sex == 'females',]
-df_males<-df[df$sex == 'males',]
+df_females<-df[df$sex == 'F',]
+df_males<-df[df$sex == 'M',]
+
+# #create an empty column for means/males
+# df_males$ind_mean<-"NA"
+# 
+# #add mean column males
+# male_means<-tapply(df_males$moving_avg,df_males$ind, mean)
+# male_mean_df<-as.data.frame(male_means)
+# # DataFrame and put name of function rn
+# male_mean_df <- tibble::rownames_to_column(male_mean_df, "ind")
+# 
+# #conditionally fill the column comparing values
+# for (i in 1:length(male_mean_df$ind)) {
+#   for (j in 1:length(df_males$moving_avg)) {
+#     if (male_mean_df$ind[i]==df_males$ind[j]) {
+#       df_males$ind_mean[j]<-male_mean_df$male_means[i]
+#     }
+#     j=j+1
+#   }
+# }
+# 
+# #add a column with std depth
+# df_males$std_depth<-as.numeric(df_males$moving_avg)/as.numeric(df_males$ind_mean)
+# 
+# #create an empty column for means/females
+# df_females$ind_mean<-"NA"
+# 
+# #add mean column females
+# male_means<-tapply(df_females$moving_avg,df_females$ind, mean)
+# male_mean_df<-as.data.frame(male_means)
+# # DataFrame and put name of function rn
+# male_mean_df <- tibble::rownames_to_column(male_mean_df, "ind")
+# 
+# #conditionally fill the column comparing values
+# for (i in 1:length(male_mean_df$ind)) {
+#   for (j in 1:length(df_females$moving_avg)) {
+#     if (male_mean_df$ind[i]==df_females$ind[j]) {
+#       df_females$ind_mean[j]<-male_mean_df$male_means[i]
+#     }
+#     j=j+1
+#   }
+# }
+# 
+# #add a column with std depth
+# df_females$std_depth<-as.numeric(df_females$moving_avg)/as.numeric(df_females$ind_mean)
 
 #list populations
 
-pop_list<-unique(df_males$pop)
+pop_list<-unique(df$pop)
 
+print(pop_list)
 
-  
-p<-ggplot(df_males,aes(x=WinCenter/1000000,y=tP,color="blue"))+
-        #geom_point(alpha=0.1)+
-        geom_smooth()+
-        geom_smooth(data = df_females,aes(x=WinCenter/1000000,y=tP,color="red"))+
-        scale_color_manual(labels = c("Males", "Females"), values = c("blue", "red"))+
-        labs(title = pop_name)+
-        #ylim(-0.05, 0.25)+
-        xlim(1,20)+
-        theme_bw()+
-        xlab("Chrom_position - Chr 7 (mb)")+
-        ylab(expression(pi))+
-        theme_classic()
+# #add fake data for absent populations*****
+# 
+# pops_to_add<-c("Liberia","Ivory","scaffold","mello")
+# 
+# #extract no of rows the lengnth of absent pops
+# 
+# fake_df<-head(df,length(pops_to_add))
+# fake_df$pop<-pops_to_add
+# fake_df$moving_avg<-rep(0,length(pops_to_add))
+# 
+# df<-rbind(df,fake_df)
+# 
+# pop_list<-unique(df$pop)
+# 
+# print(pop_list)
+
+p<-ggplot(df_males,aes(x=WinCenter/1000000,y=moving_avg,color=sex))+
+  geom_rect(data=df, inherit.aes=FALSE, aes(xmin=6.5, xmax=9, ymin=min(df$moving_avg),ymax=max(df$moving_avg)), fill="lightgrey", alpha=0.3)+
+  #geom_point(alpha=0.1)+
+  geom_point(size=0.5)+
+  scale_color_manual(values = c("M"="blue","F"='red'))+
+  geom_point(data = df_females,size=0.5,aes(x=WinCenter/1000000,y=moving_avg))+
+  #scale_color_manual(labels = c("males", "females"), values = c("blue", "red"))+
+  labs(title = pop_name)+
+  #ylim(-0.05, 0.25)+
+  xlim(1,20)+
+  theme_bw()+
+  xlab("Position - Chr 7 (MB)")+
+  ylab(expression(pi))+
+  theme_classic()+ 
+  theme(legend.position="none")
+  #geom_hline(yintercept = 1,color="lightgray")
 
 #chgange order here
-p+facet_wrap(~factor(pop,levels=c("all","notad","sierra","ghana","tad","niger")),ncol=1,labeller = as_labeller(c(all='All Individuals', notad='No tadpoles', sierra='Sierra Leone', ghana='Ghana', tad = 'Tadpoles',niger = 'Nigeria')))
+p+facet_wrap(~factor(pop,levels=c("Liberia","Sierra","Ivory","Ghana","Tad","Nigeria","Scaffold","Mellotropicalis","Cal")),ncol=1,labeller = as_labeller(c(Liberia='Liberia',Ghana='Ghana',Tad='Tadpoles',Nigeria='Nigeria',Sierra='Sierra Leone',Ivory='Ivory Coast',Scaffold='Reference Genome',Mellotropicalis='Mellotropicalis data',Cal="Calcaratus")))
 
-ggsave(paste("20M_",pop_name,"_no_point_plot.pdf",sep = ""))
+
+ggsave(paste("20M_",pop_name,"_moving_avg_plot.pdf",sep = ""),width = 5, height = 10)
+
 ```
 # PCA
 
