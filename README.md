@@ -80,8 +80,8 @@ for bamfile in ${bamdir}/*.bam; do
 
 #this is with 2pops
 #first calculate per pop saf for each populatoin
-angsd -b pop1  -anc ${refgenome} -out ${outdir}/${sample}_pop1 -dosaf 1 -gl 1 -r Chr7:1-50000000
-angsd -b pop2  -anc ${refgenome} -out ${outdir}/${sample}_pop2 -dosaf 1 -gl 1 -r Chr7:1-50000000
+angsd -b pop1 -doMaf 0 -doCounts 1 -setMinDepthInd 5 -setMaxDepth 100 -minMapQ 20 -anc ${refgenome} -out ${outdir}/${sample}_pop1 -dosaf 1 -gl 1 -r Chr7:1-50000000
+angsd -b pop2 -doMaf 0 -doCounts 1 -setMinDepthInd 5 -setMaxDepth 100 -minMapQ 20 -anc ${refgenome} -out ${outdir}/${sample}_pop2 -dosaf 1 -gl 1 -r Chr7:1-50000000
 
 #calculate the 2dsfs prior
 realSFS ${outdir}/${sample}_pop1.saf.idx ${outdir}/${sample}_pop2.saf.idx >pop1.pop2.ml
@@ -210,7 +210,7 @@ module load angsd
 module load gsl/2.5
 module load htslib
 
-angsd -GL 1 -out genolike -nThreads 10 -doGlf 2 -doMajorMinor 1 -SNP_pval 1e-6 -doMaf 1  -bam bam.filelist
+angsd -GL 1 -out genolike -nThreads 10 -doGlf 2 -doMajorMinor 1 -doMaf 0 -doCounts 1 -setMinDepthInd 5 -setMaxDepth 100 -minMapQ 20 -bam bam.filelist
 ```
 cal Admix
 
@@ -708,6 +708,8 @@ bam.filelist
 ../XT7_WY_no_adapt__sorted.bam_rg_rh.bam
 ```
 then calculated tP(π) with
+
+cal_pi_for_inds.sh
 ```bash
 #!/bin/sh
 #SBATCH --job-name=fst
@@ -733,7 +735,7 @@ module load angsd
 module load gsl/2.5
 module load htslib
 
-angsd -bam ind${SLURM_ARRAY_TASK_ID} -doSaf 1 -anc ../../reference_genome/XENTR_10.0_genome_scafconcat_goodnamez.fasta -GL 1 -P 24 -out out_${SLURM_ARRAY_TASK_ID}
+angsd -bam ind${SLURM_ARRAY_TASK_ID} -doMaf 0 -doCounts 1 -setMinDepthInd 5 -setMaxDepth 100 -minMapQ 20 -doSaf 1 -anc ../../reference_genome/XENTR_10.0_genome_scafconcat_goodnamez.fasta -GL 1 -P 24 -out out_${SLURM_ARRAY_TASK_ID}
 
 realSFS out_${SLURM_ARRAY_TASK_ID}.saf.idx -P 24 > out_${SLURM_ARRAY_TASK_ID}.sfs
 realSFS saf2theta out_${SLURM_ARRAY_TASK_ID}.saf.idx -sfs out_${SLURM_ARRAY_TASK_ID}.sfs -outname out_${SLURM_ARRAY_TASK_ID}
