@@ -35,7 +35,7 @@ XT7_WY_no_adapt__sorted.bam_rg_rh.bam
 
 Then used the following script to cal FST changing essential fields
 
-***** RUN THIS IN DIFFERENT DIRECTORIES FOR DIFFERENT POPULATIONS ******
+***** RUN THIS IN DIFFERENT DIRECTORIES (inside the directory with bam files) FOR DIFFERENT POPULATIONS ******
 
 **removed "-r Chr7:1-50000000" to cal FST for the wholw gwnome **
 
