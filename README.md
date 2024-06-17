@@ -745,6 +745,14 @@ thetaStat do_stat out_${SLURM_ARRAY_TASK_ID}.thetas.idx -win 5000 -step 5000  -o
 ```
 After downloading the files, 
 
+First I renamed files with the format 
+
+Filename_sex_popularion
+
+eg: allROM19161_F_Liberia
+
+and then
+
 calculated moving average by windows
 
 ```R
